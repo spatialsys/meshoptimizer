@@ -32,6 +32,15 @@ struct Stream
 	std::vector<Attr> data;
 };
 
+struct TempFile
+{
+	std::string path;
+	int fd;
+
+	TempFile(const char* suffix);
+	~TempFile();
+};
+
 struct Transform
 {
 	float data[16];
@@ -246,15 +255,6 @@ struct BufferView
 	size_t bytes;
 };
 
-struct TempFile
-{
-	std::string path;
-	int fd;
-
-	TempFile(const char* suffix);
-	~TempFile();
-};
-
 std::string getFullPath(const char* path, const char* base_path);
 std::string getFileName(const char* path);
 std::string getExtension(const char* path);
@@ -293,8 +293,11 @@ bool hasAlpha(const std::string& data, const char* mime_type);
 
 bool checkBasis(bool verbose);
 bool encodeBasis(const std::string& data, const char* mime_type, std::string& result, const ImageInfo& info, const Settings& settings);
+bool encodeBasisToFile(const std::string& data, const char* mime_type, const char* temp_output_path, const ImageInfo& info, const Settings& settings);
 bool checkKtx(bool verbose);
 bool encodeKtx(const std::string& data, const char* mime_type, std::string& result, const ImageInfo& info, const Settings& settings);
+bool encodeKtxToFile(const std::string& data, const char* mime_type, const char* temp_output_path, const ImageInfo& info, const Settings& settings);
+bool preEncodeImageToFile(const cgltf_image& image, const ImageInfo& info, size_t index, const char* input_path, const char* temp_output_path, const Settings& settings);
 
 void markScenes(cgltf_data* data, std::vector<NodeInfo>& nodes);
 void markAnimated(cgltf_data* data, std::vector<NodeInfo>& nodes, const std::vector<Animation>& animations);
@@ -330,7 +333,7 @@ const char* animationPath(cgltf_animation_path_type type);
 void writeMaterial(std::string& json, const cgltf_data* data, const cgltf_material& material, const QuantizationPosition* qp, const QuantizationTexture* qt);
 void writeBufferView(std::string& json, BufferView::Kind kind, StreamFormat::Filter filter, size_t count, size_t stride, size_t bin_offset, size_t bin_size, BufferView::Compression compression, size_t compressed_offset, size_t compressed_size);
 void writeSampler(std::string& json, const cgltf_sampler& sampler);
-void writeImage(std::string& json, std::vector<BufferView>& views, const cgltf_image& image, const ImageInfo& info, size_t index, const char* input_path, const char* output_path, const Settings& settings);
+void writeImage(std::string& json, std::vector<BufferView>& views, const cgltf_image& image, const ImageInfo& info, size_t index, const char* input_path, const char* output_path, const Settings& settings, std::unique_ptr<TempFile> pre_encoded_file);
 void writeTexture(std::string& json, const cgltf_texture& texture, cgltf_data* data, const Settings& settings);
 void writeMeshAttributes(std::string& json, std::vector<BufferView>& views, std::string& json_accessors, size_t& accr_offset, const Mesh& mesh, int target, const QuantizationPosition& qp, const QuantizationTexture& qt, const Settings& settings);
 size_t writeMeshIndices(std::vector<BufferView>& views, std::string& json_accessors, size_t& accr_offset, const Mesh& mesh, const Settings& settings);
