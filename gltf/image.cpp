@@ -5,6 +5,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef _WIN32
+#include "third_party/win_run_process.h"
+#endif
+
 struct BasisSettings
 {
 	int etc1s_l;
@@ -299,6 +303,10 @@ static int execute(const char* cmd_, bool ignore_stdout, bool ignore_stderr)
 	if (ignore_stderr)
 		(cmd += " 2>") += ignore;
 
+#ifdef _WIN32
+	return win_run_process(cmd.c_str());
+#else
+
 	FILE* test = popen(cmd.c_str(), "r");
 
 	if (test == NULL)
@@ -314,6 +322,7 @@ static int execute(const char* cmd_, bool ignore_stdout, bool ignore_stderr)
 	
 	int status = pclose(test);
 	return WEXITSTATUS(status);
+#endif
 }
 
 static std::string getExecutable(const char* name, const char* env)
