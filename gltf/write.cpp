@@ -759,7 +759,24 @@ void writeSampler(std::string& json, const cgltf_sampler& sampler)
 	append(json, size_t(sampler.wrap_t));
 }
 
-void writeImage(std::string& json, std::vector<BufferView>& views, const cgltf_image& image, const ImageInfo& info, size_t index, const char* input_path, const char* output_path, const Settings& settings)
+bool preEncodeImageToFile(const cgltf_image& image, const ImageInfo& info, size_t index, const char* input_path, const char* temp_output_path, const Settings& settings)
+{
+	if (!settings.texture_ktx2)
+		return true;
+	std::string img_data;
+	std::string mime_type;
+	if (!readImage(image, input_path, img_data, mime_type))
+	{
+		fprintf(stderr, "Warning: unable to read image %d (%s), skipping\n", int(index), image.uri ? image.uri : "?");
+		return false;
+	}
+
+	bool (*encodeImageToFile)(const std::string& data, const char* mime_type, const char* output_path, const ImageInfo& info, const Settings& settings) = settings.texture_toktx ? encodeKtxToFile : encodeBasisToFile;
+	return encodeImageToFile(img_data, mime_type.c_str(), temp_output_path, info, settings);
+}
+
+// |pre_encoded_file| can be null; this is just a way to pass a pre-encoded (ktx2) version as an optimization.
+void writeImage(std::string& json, std::vector<BufferView>& views, const cgltf_image& image, const ImageInfo& info, size_t index, const char* input_path, const char* output_path, const Settings& settings, std::unique_ptr<TempFile> pre_encoded_file)
 {
 	bool dataUri = image.uri && strncmp(image.uri, "data:", 5) == 0;
 
@@ -786,7 +803,8 @@ void writeImage(std::string& json, std::vector<BufferView>& views, const cgltf_i
 	{
 		std::string encoded;
 
-		if (encodeImage(img_data, mime_type.c_str(), encoded, info, settings))
+		if ((pre_encoded_file && readFile(pre_encoded_file->path.c_str(), encoded)) ||
+		 	encodeImage(img_data, mime_type.c_str(), encoded, info, settings))
 		{
 			if (!settings.texture_embed && image.uri && !dataUri)
 			{

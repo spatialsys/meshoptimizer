@@ -2,6 +2,7 @@
 #include "gltfpack.h"
 
 #include <algorithm>
+#include <thread>
 
 #include <stdint.h>
 #include <stdio.h>
@@ -441,6 +442,28 @@ static void process(cgltf_data* data, const char* input_path, const char* output
 		append(json_samplers, "}");
 	}
 
+	std::vector<std::unique_ptr<TempFile>> images_pre_encoded(data->images_count);
+	const bool MULTITHREADED_ENCODE = true;
+	if (MULTITHREADED_ENCODE) {
+		std::vector<std::thread> encoding_tasks;
+		for (size_t i = 0; i < data->images_count; ++i)
+		{
+			const cgltf_image& image = data->images[i];
+
+			if (settings.texture_ktx2)
+			{
+				images_pre_encoded[i] = std::unique_ptr<TempFile>(new TempFile(".ktx2"));
+				encoding_tasks.push_back(
+					std::thread(preEncodeImageToFile, std::ref(image), std::ref(images[i]),
+								i, input_path, images_pre_encoded[i]->path.c_str(), std::ref(settings)));
+			}
+		}
+
+		for (size_t i = 0; i < encoding_tasks.size(); ++i) {
+			encoding_tasks[i].join();
+		}
+	}
+
 	for (size_t i = 0; i < data->images_count; ++i)
 	{
 		const cgltf_image& image = data->images[i];
@@ -455,7 +478,7 @@ static void process(cgltf_data* data, const char* input_path, const char* output
 
 		comma(json_images);
 		append(json_images, "{");
-		writeImage(json_images, views, image, images[i], i, input_path, output_path, settings);
+		writeImage(json_images, views, image, images[i], i, input_path, output_path, settings, std::move(images_pre_encoded[i]));
 		append(json_images, "}");
 	}
 
