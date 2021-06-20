@@ -13,6 +13,7 @@
 #include <unistd.h>
 #endif
 
+#include "third_party/thread_pool.h"
 #include "../src/meshoptimizer.h"
 
 std::string getVersion()
@@ -445,7 +446,8 @@ static void process(cgltf_data* data, const char* input_path, const char* output
 	std::vector<std::unique_ptr<TempFile>> images_pre_encoded(data->images_count);
 	const bool MULTITHREADED_ENCODE = true;
 	if (MULTITHREADED_ENCODE) {
-		std::vector<std::thread> encoding_tasks;
+		ThreadPool pool(7);
+		std::vector<std::future<bool>> task_results(data->images_count);
 		for (size_t i = 0; i < data->images_count; ++i)
 		{
 			const cgltf_image& image = data->images[i];
@@ -453,14 +455,14 @@ static void process(cgltf_data* data, const char* input_path, const char* output
 			if (settings.texture_ktx2)
 			{
 				images_pre_encoded[i] = std::unique_ptr<TempFile>(new TempFile(".ktx2"));
-				encoding_tasks.push_back(
-					std::thread(preEncodeImageToFile, std::ref(image), std::ref(images[i]),
-								i, input_path, images_pre_encoded[i]->path.c_str(), std::ref(settings)));
+				task_results[i] = pool.enqueue(preEncodeImageToFile, std::ref(image), std::ref(images[i]),
+							i, input_path, images_pre_encoded[i]->path.c_str(), std::ref(settings));
 			}
 		}
 
-		for (size_t i = 0; i < encoding_tasks.size(); ++i) {
-			encoding_tasks[i].join();
+		// Block until everything is done.
+		for (size_t i = 0; i < task_results.size(); ++i) {
+			task_results[i].get();
 		}
 	}
 
