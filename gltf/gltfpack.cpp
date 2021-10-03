@@ -446,7 +446,14 @@ static void process(cgltf_data* data, const char* input_path, const char* output
 	std::vector<std::unique_ptr<TempFile>> images_pre_encoded(data->images_count);
 	const bool MULTITHREADED_ENCODE = true;
 	if (MULTITHREADED_ENCODE) {
-		ThreadPool pool(7);
+		int threadpool_size = 7;
+
+		const char* num_instances_env = getenv("GLTFPACK_NUM_TOKTX_INSTANCES");
+		if (num_instances_env != NULL) {
+			int n = atoi(num_instances_env);
+			if (n != 0) threadpool_size = n;
+		}
+		ThreadPool pool(threadpool_size);
 		std::vector<std::future<bool>> task_results(data->images_count);
 		for (size_t i = 0; i < data->images_count; ++i)
 		{
