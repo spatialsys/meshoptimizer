@@ -2,6 +2,7 @@
 #include "gltfpack.h"
 
 #include <algorithm>
+#include <thread>
 
 #include <stdint.h>
 #include <stdio.h>
@@ -12,6 +13,7 @@
 #include <unistd.h>
 #endif
 
+#include "third_party/thread_pool.h"
 #include "../src/meshoptimizer.h"
 
 std::string getVersion()
@@ -441,6 +443,36 @@ static void process(cgltf_data* data, const char* input_path, const char* output
 		append(json_samplers, "}");
 	}
 
+	std::vector<std::unique_ptr<TempFile>> images_pre_encoded(data->images_count);
+	const bool MULTITHREADED_ENCODE = true;
+	if (MULTITHREADED_ENCODE) {
+		int threadpool_size = 7;
+
+		const char* num_instances_env = getenv("GLTFPACK_NUM_TOKTX_INSTANCES");
+		if (num_instances_env != NULL) {
+			int n = atoi(num_instances_env);
+			if (n != 0) threadpool_size = n;
+		}
+		ThreadPool pool(threadpool_size);
+		std::vector<std::future<bool>> task_results(data->images_count);
+		for (size_t i = 0; i < data->images_count; ++i)
+		{
+			const cgltf_image& image = data->images[i];
+
+			if (settings.texture_ktx2)
+			{
+				images_pre_encoded[i] = std::unique_ptr<TempFile>(new TempFile(".ktx2"));
+				task_results[i] = pool.enqueue(preEncodeImageToFile, std::ref(image), std::ref(images[i]),
+							i, input_path, images_pre_encoded[i]->path.c_str(), std::ref(settings));
+			}
+		}
+
+		// Block until everything is done.
+		for (size_t i = 0; i < task_results.size(); ++i) {
+			task_results[i].get();
+		}
+	}
+
 	for (size_t i = 0; i < data->images_count; ++i)
 	{
 		const cgltf_image& image = data->images[i];
@@ -455,7 +487,7 @@ static void process(cgltf_data* data, const char* input_path, const char* output
 
 		comma(json_images);
 		append(json_images, "{");
-		writeImage(json_images, views, image, images[i], i, input_path, output_path, settings);
+		writeImage(json_images, views, image, images[i], i, input_path, output_path, settings, std::move(images_pre_encoded[i]));
 		append(json_images, "}");
 	}
 

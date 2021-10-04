@@ -5,6 +5,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef _WIN32
+#include "third_party/win_run_process.h"
+#endif
+
 struct BasisSettings
 {
 	int etc1s_l;
@@ -299,7 +303,26 @@ static int execute(const char* cmd_, bool ignore_stdout, bool ignore_stderr)
 	if (ignore_stderr)
 		(cmd += " 2>") += ignore;
 
-	return system(cmd.c_str());
+#ifdef _WIN32
+	return win_run_process(cmd.c_str());
+#else
+
+	FILE* test = popen(cmd.c_str(), "r");
+
+	if (test == NULL)
+	{
+		return 1;
+	}
+	
+	char buffer[1028];
+	
+	while (fgets(buffer, 1028, test) != NULL)
+	{
+	}
+	
+	int status = pclose(test);
+	return WEXITSTATUS(status);
+#endif
 }
 
 static std::string getExecutable(const char* name, const char* env)
@@ -332,9 +355,14 @@ bool checkBasis(bool verbose)
 
 bool encodeBasis(const std::string& data, const char* mime_type, std::string& result, const ImageInfo& info, const Settings& settings)
 {
+	TempFile temp_output(".ktx2");
+	return encodeBasisToFile(data, mime_type, temp_output.path.c_str(), info, settings) && readFile(temp_output.path.c_str(), result);
+}
+
+bool encodeBasisToFile(const std::string& data, const char* mime_type, const char* temp_output_path, const ImageInfo& info, const Settings& settings)
+{
 	// TODO: Support texture_scale and texture_pow2 via new -resample switch from https://github.com/BinomialLLC/basis_universal/pull/226
 	TempFile temp_input(mimeExtension(mime_type));
-	TempFile temp_output(".ktx2");
 
 	if (!writeFile(temp_input.path.c_str(), data))
 		return false;
@@ -386,13 +414,13 @@ bool encodeBasis(const std::string& data, const char* mime_type, std::string& re
 	cmd += " -file ";
 	cmd += temp_input.path;
 	cmd += " -output_file ";
-	cmd += temp_output.path;
+	cmd += temp_output_path;
 
 	int rc = execute(cmd.c_str(), /* ignore_stdout= */ true, /* ignore_stderr= */ false);
 	if (settings.verbose > 1)
 		printf("%s => %d\n", cmd.c_str(), rc);
 
-	return rc == 0 && readFile(temp_output.path.c_str(), result);
+	return rc == 0;
 }
 
 bool checkKtx(bool verbose)
@@ -410,13 +438,17 @@ bool checkKtx(bool verbose)
 
 bool encodeKtx(const std::string& data, const char* mime_type, std::string& result, const ImageInfo& info, const Settings& settings)
 {
+	TempFile temp_output(".ktx2");
+	return encodeKtxToFile(data, mime_type, temp_output.path.c_str(), info, settings) && readFile(temp_output.path.c_str(), result);
+}
+
+bool encodeKtxToFile(const std::string& data, const char* mime_type, const char* temp_output_path, const ImageInfo& info, const Settings& settings)
+{
 	int width = 0, height = 0;
 	if (!getDimensions(data, mime_type, width, height))
 		return false;
 
 	TempFile temp_input(mimeExtension(mime_type));
-	TempFile temp_output(".ktx2");
-
 	if (!writeFile(temp_input.path.c_str(), data))
 		return false;
 
@@ -474,7 +506,7 @@ bool encodeKtx(const std::string& data, const char* mime_type, std::string& resu
 		cmd += " --linear";
 
 	cmd += " -- ";
-	cmd += temp_output.path;
+	cmd += temp_output_path;
 	cmd += " ";
 	cmd += temp_input.path;
 
@@ -482,5 +514,5 @@ bool encodeKtx(const std::string& data, const char* mime_type, std::string& resu
 	if (settings.verbose > 1)
 		printf("%s => %d\n", cmd.c_str(), rc);
 
-	return rc == 0 && readFile(temp_output.path.c_str(), result);
+	return rc == 0;
 }
